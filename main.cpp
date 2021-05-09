@@ -19,7 +19,7 @@
 #define GREAT 1
 #define PER GREAT
 
-
+void chargeButtonPressed();
 
 struct GuiItems
 {
@@ -132,7 +132,8 @@ void readTheCanBusYo()
       }
       gui_items.can_mtx.unlock();
 
-      if (rx_data.can_id == ELCON_READ_ADDR)
+      uint32_t id = rx_data.getId();
+      if (id == ELCON_READ_ADDR)
       {
         actual_current = ((double) ((rx_data.data[0] << 8) 
                          | (rx_data.data[1]))) / 10;
@@ -234,6 +235,12 @@ void connectButtonPressed()
     can->Close();
     gui_items.can_mtx.unlock();
     gui_items.charge_button->setEnabled(false);
+
+    // toggle back to start charging
+    if (gui_items.charge_button->text() == "Stop Charging")
+    {
+        chargeButtonPressed();
+    }
   }
   
 }
