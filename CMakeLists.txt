@@ -35,7 +35,7 @@ else()
 endif()
 
 
-find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets core REQUIRED)
+find_package(QT NAMES Qt5 COMPONENTS Widgets core REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
 
 set(PROJECT_SOURCES
@@ -46,7 +46,7 @@ set(PROJECT_SOURCES
         ${SOURCES}
 )
 
-if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
+if(${QT_VERSION_MAJOR} GREATER_EQUAL 5)
     qt_add_executable(ChargerGui
         ${PROJECT_SOURCES}
     )
