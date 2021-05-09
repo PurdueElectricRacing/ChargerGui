@@ -36,12 +36,37 @@ struct GuiItems
 
   QLabel * voltage_label;
   QLabel * current_label;
-  QThread * charger_thread;
   QThread * reader_thread;
+  QThread * charger_thread;
   std::mutex can_mtx;
+  bool terminate = false;
 
 
   void init(ChargerGui &w);
+  virtual ~GuiItems() {
+    if (can_if)
+    {
+      terminate = true;
+      gui = 0;
+      device_box = 0;
+      baud_combobox = 0;
+      connect_button = 0;
+      refresh_button = 0;
+      charge_button = 0;
+      request_current = 0;
+      target_voltage = 0;
+      voltage_label = 0;
+      current_label = 0;
+
+      can_mtx.lock();
+      can_if->Close();
+      can_if = 0;
+      can_mtx.unlock();
+      
+      dev_open = false;
+      charge_enable = false;
+    }
+  }
   
   bool charge_enable = false;
   bool dev_open = false;
@@ -91,16 +116,20 @@ void baudRateChanged(int idx)
 ///         if we get a message from the address we care about
 void readTheCanBusYo()
 {
-  while (PER == GREAT)
+  while (!gui_items.terminate)
   {
     CanInterface * can_if = gui_items.can_if;
     while (gui_items.dev_open)
     {
       double actual_current = 0;
       double actual_voltage = 0;
+      CanFrame rx_data;
 
       gui_items.can_mtx.lock();
-      CanFrame rx_data = can_if->readCanData();
+      if (can_if)
+      {
+        rx_data = can_if->readCanData();
+      }
       gui_items.can_mtx.unlock();
 
       if (rx_data.can_id == ELCON_READ_ADDR)
@@ -109,8 +138,11 @@ void readTheCanBusYo()
                          | (rx_data.data[1]))) / 10;
         actual_voltage = ((double) ((rx_data.data[2] << 8) 
                          | (rx_data.data[3]))) / 10;
-        gui_items.voltage_label->setText(QString().setNum(actual_voltage));
-        gui_items.current_label->setText(QString().setNum(actual_current));
+        if (!gui_items.terminate)
+        {
+          gui_items.voltage_label->setText(QString().setNum(actual_voltage));
+          gui_items.current_label->setText(QString().setNum(actual_current));
+        }
       }
     }
   }
@@ -126,12 +158,18 @@ void elconsChargeTheCarYo()
   CanInterface * can_if = gui_items.can_if;
   uint8_t to_send[5];
 
-  while (PER == GREAT)
+  while (!gui_items.terminate)
   {
     if (gui_items.charge_enable && gui_items.dev_open)
     {
-      uint16_t request_current = gui_items.request_current->value() * 10;
-      uint16_t target_voltage = gui_items.target_voltage->value() * 10;
+      uint16_t target_voltage = 0;
+      uint16_t request_current = 0;
+      // don't access these pointers anymore pls
+      if (!gui_items.terminate)
+      {
+        request_current = gui_items.request_current->value() * 10;
+        target_voltage = gui_items.target_voltage->value() * 10;
+      }
 
       to_send[0] = request_current >> 8;
       to_send[1] = request_current;
@@ -139,7 +177,10 @@ void elconsChargeTheCarYo()
       to_send[3] = target_voltage;
       to_send[4] = 1;
 
-      can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
+      if (can_if)
+      {
+        can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
+      }
     }
     else if (gui_items.dev_open)
     {
@@ -148,8 +189,10 @@ void elconsChargeTheCarYo()
       to_send[2] = 0;
       to_send[3] = 0;
       to_send[4] = 0;
-
-      can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
+      if (can_if)
+      {
+        can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
+      }
     }
     // delay 1 second
     QThread::currentThread()->msleep(1000);
@@ -246,7 +289,6 @@ void refreshButtonPressed()
     {
       dev_combobox->addItem(name.c_str());
     }
-    
   }
 }
 
@@ -261,11 +303,13 @@ void GuiItems::init(ChargerGui &w)
   connect_button = w.findChild<QCommandLinkButton *>("CanConnectButton");
   charge_button = w.findChild<QCommandLinkButton *>("ChargeButton");
   refresh_button = w.findChild<QCommandLinkButton *>("RefreshButton");
-  charger_thread = QThread::create(elconsChargeTheCarYo);
-  reader_thread = QThread::create(readTheCanBusYo);
+
   // set the button text to green
   connect_button->setStyleSheet("color:rgb(0,85,0);");
   charge_button->setEnabled(false);
+
+  charger_thread = QThread::create(elconsChargeTheCarYo);
+  reader_thread = QThread::create(readTheCanBusYo);
 
   // I guess findChild doesn't check more than 1 level of recursion
   QWidget * subframe = w.findChild<QWidget *>("widget");
@@ -288,9 +332,10 @@ void GuiItems::init(ChargerGui &w)
   QObject::connect(device_box, 
                    QOverload<int>::of(&QComboBox::currentIndexChanged),
                    deviceIndexChanged);
+
+  refreshButtonPressed();
   charger_thread->start();
   reader_thread->start();
-  refreshButtonPressed();
 }
 
 
@@ -299,18 +344,7 @@ int main(int argc, char *argv[])
   QApplication a(argc, argv);
   ChargerGui w;
   gui_items.init(w);
-  w.show();
-  int ret = 0;
-  
-  try
-  {
-    ret = a.exec();
-  }
-  catch (const std::exception &e)
-  {
-    std::cerr << e.what() << "\n";
-  }
 
-  gui_items.can_if->Close();
-  return ret;
+  w.show();
+  return a.exec();
 }
