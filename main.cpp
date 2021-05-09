@@ -139,10 +139,7 @@ void elconsChargeTheCarYo()
       to_send[3] = target_voltage;
       to_send[4] = 1;
 
-      gui_items.can_mtx.lock();
       can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
-      gui_items.can_mtx.unlock();
-
     }
     else if (gui_items.dev_open)
     {
@@ -181,6 +178,7 @@ void connectButtonPressed()
     gui_items.dev_open = true;
     gui_items.connect_button->setText("Disconnect");
     gui_items.connect_button->setStyleSheet("color:rgb(170,0,0);");
+    gui_items.charge_button->setEnabled(true);
   }
   else
   {
@@ -192,6 +190,7 @@ void connectButtonPressed()
     gui_items.can_mtx.lock();
     can->Close();
     gui_items.can_mtx.unlock();
+    gui_items.charge_button->setEnabled(false);
   }
   
 }
@@ -266,6 +265,7 @@ void GuiItems::init(ChargerGui &w)
   reader_thread = QThread::create(readTheCanBusYo);
   // set the button text to green
   connect_button->setStyleSheet("color:rgb(0,85,0);");
+  charge_button->setEnabled(false);
 
   // I guess findChild doesn't check more than 1 level of recursion
   QWidget * subframe = w.findChild<QWidget *>("widget");
@@ -289,7 +289,7 @@ void GuiItems::init(ChargerGui &w)
                    QOverload<int>::of(&QComboBox::currentIndexChanged),
                    deviceIndexChanged);
   charger_thread->start();
-  // reader_thread->start();
+  reader_thread->start();
   refreshButtonPressed();
 }
 
@@ -300,10 +300,11 @@ int main(int argc, char *argv[])
   ChargerGui w;
   gui_items.init(w);
   w.show();
-
+  int ret = 0;
+  
   try
   {
-    int ret = a.exec();
+    ret = a.exec();
   }
   catch (const std::exception &e)
   {
