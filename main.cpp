@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <string>
 #include <thread>
+#include <exception>
 
 #include "can_api.h"
 
@@ -127,34 +128,31 @@ void elconsChargeTheCarYo()
 
   while (PER == GREAT)
   {
-    while (gui_items.charge_enable)
+    if (gui_items.charge_enable && gui_items.dev_open)
     {
-      if (gui_items.charge_enable && gui_items.dev_open)
-      {
-        uint16_t request_current = gui_items.request_current->value() * 10;
-        uint16_t target_voltage = gui_items.target_voltage->value() * 10;
+      uint16_t request_current = gui_items.request_current->value() * 10;
+      uint16_t target_voltage = gui_items.target_voltage->value() * 10;
 
-        to_send[0] = request_current >> 8;
-        to_send[1] = request_current;
-        to_send[2] = target_voltage >> 8;
-        to_send[3] = target_voltage;
-        to_send[4] = 1;
+      to_send[0] = request_current >> 8;
+      to_send[1] = request_current;
+      to_send[2] = target_voltage >> 8;
+      to_send[3] = target_voltage;
+      to_send[4] = 1;
 
-        gui_items.can_mtx.lock();
-        can_if->writeCanData(0x069, 5, to_send);
-        gui_items.can_mtx.unlock();
+      gui_items.can_mtx.lock();
+      can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
+      gui_items.can_mtx.unlock();
 
-      }
-      else if (gui_items.dev_open)
-      {
-        to_send[0] = 0;
-        to_send[1] = 0;
-        to_send[2] = 0;
-        to_send[3] = 0;
-        to_send[4] = 0;
+    }
+    else if (gui_items.dev_open)
+    {
+      to_send[0] = 0;
+      to_send[1] = 0;
+      to_send[2] = 0;
+      to_send[3] = 0;
+      to_send[4] = 0;
 
-        can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
-      }
+      can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
     }
     // delay 1 second
     QThread::currentThread()->msleep(1000);
@@ -170,19 +168,14 @@ void connectButtonPressed()
 {
   CanInterface * can = gui_items.can_if;
 
-  if (!can)
-  {
-    gui_items.can_if = NewCanDevice(getBaudRate());
-    can = gui_items.can_if;
-  }
-
   if (!gui_items.dev_open)
   {
     int baud_idx = gui_items.baud_combobox->currentIndex();
     int dev_index = gui_items.device_box->currentIndex();
-  
+    int baud_rate = getBaudRate(baud_idx);
+
     gui_items.can_mtx.lock();
-    can->Open(dev_index, getBaudRate(dev_index));
+    can->Open(dev_index, baud_rate);
     gui_items.can_mtx.unlock();
 
     gui_items.dev_open = true;
@@ -280,6 +273,8 @@ void GuiItems::init(ChargerGui &w)
   current_label = subframe->findChild<QLabel*>("CurrentLabel");
   target_voltage = w.findChild<QDoubleSpinBox *>("TargetVoltageBox");
   request_current = w.findChild<QDoubleSpinBox *>("TargetCurrentBox");
+  int baud = getBaudRate(baud_combobox->currentIndex());
+  can_if = NewCanDevice(baud);
 
   QObject::connect(baud_combobox, 
                    QOverload<int>::of(&QComboBox::currentIndexChanged), 
@@ -305,5 +300,16 @@ int main(int argc, char *argv[])
   ChargerGui w;
   gui_items.init(w);
   w.show();
-  return a.exec();
+
+  try
+  {
+    int ret = a.exec();
+  }
+  catch (const std::exception &e)
+  {
+    std::cerr << e.what() << "\n";
+  }
+
+  gui_items.can_if->Close();
+  return ret;
 }
