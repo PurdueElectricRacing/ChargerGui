@@ -8,6 +8,7 @@
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <string>
+#include <thread>
 
 #include "can_api.h"
 
@@ -36,6 +37,7 @@ struct GuiItems
   QLabel * current_label;
   QThread * charger_thread;
   QThread * reader_thread;
+  std::mutex can_mtx;
 
 
   void init(ChargerGui &w);
@@ -95,7 +97,10 @@ void readTheCanBusYo()
     {
       double actual_current = 0;
       double actual_voltage = 0;
+
+      gui_items.can_mtx.lock();
       CanFrame rx_data = can_if->readCanData();
+      gui_items.can_mtx.unlock();
 
       if (rx_data.can_id == ELCON_READ_ADDR)
       {
@@ -122,30 +127,35 @@ void elconsChargeTheCarYo()
 
   while (PER == GREAT)
   {
-    if (gui_items.charge_enable && gui_items.dev_open)
+    while (gui_items.charge_enable)
     {
-      uint16_t request_current = gui_items.request_current->value() * 10;
-      uint16_t target_voltage = gui_items.target_voltage->value() * 10;
+      if (gui_items.charge_enable && gui_items.dev_open)
+      {
+        uint16_t request_current = gui_items.request_current->value() * 10;
+        uint16_t target_voltage = gui_items.target_voltage->value() * 10;
 
-      to_send[0] = request_current >> 8;
-      to_send[1] = request_current;
-      to_send[2] = target_voltage >> 8;
-      to_send[3] = target_voltage;
-      to_send[4] = 1;
+        to_send[0] = request_current >> 8;
+        to_send[1] = request_current;
+        to_send[2] = target_voltage >> 8;
+        to_send[3] = target_voltage;
+        to_send[4] = 1;
 
-      can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
+        gui_items.can_mtx.lock();
+        can_if->writeCanData(0x069, 5, to_send);
+        gui_items.can_mtx.unlock();
+
+      }
+      else if (gui_items.dev_open)
+      {
+        to_send[0] = 0;
+        to_send[1] = 0;
+        to_send[2] = 0;
+        to_send[3] = 0;
+        to_send[4] = 0;
+
+        can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
+      }
     }
-    else if (gui_items.dev_open)
-    {
-      to_send[0] = 0;
-      to_send[1] = 0;
-      to_send[2] = 0;
-      to_send[3] = 0;
-      to_send[4] = 0;
-
-      can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
-    }
-
     // delay 1 second
     QThread::currentThread()->msleep(1000);
   }
@@ -160,12 +170,21 @@ void connectButtonPressed()
 {
   CanInterface * can = gui_items.can_if;
 
+  if (!can)
+  {
+    gui_items.can_if = NewCanDevice(getBaudRate());
+    can = gui_items.can_if;
+  }
+
   if (!gui_items.dev_open)
   {
     int baud_idx = gui_items.baud_combobox->currentIndex();
     int dev_index = gui_items.device_box->currentIndex();
   
+    gui_items.can_mtx.lock();
     can->Open(dev_index, getBaudRate(dev_index));
+    gui_items.can_mtx.unlock();
+
     gui_items.dev_open = true;
     gui_items.connect_button->setText("Disconnect");
     gui_items.connect_button->setStyleSheet("color:rgb(170,0,0);");
@@ -176,7 +195,10 @@ void connectButtonPressed()
     gui_items.dev_open = false;
     gui_items.charge_enable = false;
     gui_items.connect_button->setStyleSheet("color:rgb(0,85,0);");
+    
+    gui_items.can_mtx.lock();
     can->Close();
+    gui_items.can_mtx.unlock();
   }
   
 }
@@ -242,7 +264,6 @@ void refreshButtonPressed()
 void GuiItems::init(ChargerGui &w)
 {
   gui_items.gui = &w;
-  gui_items.can_if = NewCanDevice();
   baud_combobox = w.findChild<QComboBox *>("BaudRateBox");
   device_box = w.findChild<QComboBox *>("CanDevices");
   connect_button = w.findChild<QCommandLinkButton *>("CanConnectButton");
@@ -273,7 +294,8 @@ void GuiItems::init(ChargerGui &w)
                    QOverload<int>::of(&QComboBox::currentIndexChanged),
                    deviceIndexChanged);
   charger_thread->start();
-  reader_thread->start();
+  // reader_thread->start();
+  refreshButtonPressed();
 }
 
 
