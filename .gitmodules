@@ -1,0 +1,3 @@
+[submodule "DesktopCAN_API"]
+	path = DesktopCAN_API
+	url = https://github.com/PurdueElectricRacing/DesktopCAN_API.git
