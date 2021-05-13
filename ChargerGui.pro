@@ -5,7 +5,8 @@ TARGET = ChargerGui
 SOURCES += main.cpp \
            chargergui.cpp 
 
-HEADERS += chargergui.h
+HEADERS += chargergui.h \
+    timer.h
 
 FORMS += chargergui.ui
 

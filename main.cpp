@@ -12,6 +12,7 @@
 #include <exception>
 
 #include "can_api.h"
+#include "timer.h"
 
 #define ELCON_WRITE_ADDR 0x1806E5F4
 #define ELCON_READ_ADDR  0x18FF50E5
@@ -36,8 +37,10 @@ struct GuiItems
 
   QLabel * voltage_label;
   QLabel * current_label;
+  QLabel * timer_label;
   QThread * reader_thread;
   QThread * charger_thread;
+  Timer timer;
   std::mutex can_mtx;
   bool terminate = false;
 
@@ -57,7 +60,7 @@ struct GuiItems
       target_voltage = 0;
       voltage_label = 0;
       current_label = 0;
-
+      timer = 0;
       can_mtx.lock();
       can_if->Close();
       can_if = 0;
@@ -121,6 +124,39 @@ void readTheCanBusYo()
     CanInterface * can_if = gui_items.can_if;
     while (gui_items.dev_open)
     {
+      if (gui_items.charge_enable)
+      {
+        uint64_t seconds = gui_items.timer.elapsedMs() / 1000;
+        int hour = seconds / 3600;
+        int minute = (seconds % 3600) / 60;
+        int second = seconds % 60;
+        QString minutes;
+        QString hours;
+        QString seconds_str;
+
+        hours.setNum(hour);
+        minutes.setNum(minute);
+        seconds_str.setNum(second);
+
+        if (hour < 10)
+        {
+          hours = "0" + hours;
+        }
+        if (minute < 10)
+        {
+          minutes = "0" + minutes;
+        }
+        if (second < 10)
+        {
+          seconds_str = "0" + seconds_str;
+        }
+
+
+        QString time = hours + ":" + minutes + ":" + seconds_str;
+
+        gui_items.timer_label->setText(time);
+      }
+
       double actual_current = 0;
       double actual_voltage = 0;
       CanFrame rx_data;
@@ -266,7 +302,7 @@ void chargeButtonPressed()
     gui_items.charge_enable = true;
     gui_items.charge_button->setText("Stop Charging");
     gui_items.charge_button->setStyleSheet("color:rgb(170,0,0);");
-    
+    gui_items.timer.start();
   }
   else
   {
@@ -320,12 +356,15 @@ void GuiItems::init(ChargerGui &w)
 
   // I guess findChild doesn't check more than 1 level of recursion
   QWidget * subframe = w.findChild<QWidget *>("widget");
+  QFrame * timer_frame = w.findChild<QFrame *>("timerFrame");
+  timer_label = timer_frame->findChild<QLabel *>("ElapsedTimeLabel");
   voltage_label = subframe->findChild<QLabel*>("VoltageLabel");
   current_label = subframe->findChild<QLabel*>("CurrentLabel");
   target_voltage = w.findChild<QDoubleSpinBox *>("TargetVoltageBox");
   request_current = w.findChild<QDoubleSpinBox *>("TargetCurrentBox");
   int baud = getBaudRate(baud_combobox->currentIndex());
   can_if = NewCanDevice(baud);
+
 
   QObject::connect(baud_combobox, 
                    QOverload<int>::of(&QComboBox::currentIndexChanged), 
