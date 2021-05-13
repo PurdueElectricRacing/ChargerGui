@@ -135,9 +135,9 @@ void readTheCanBusYo()
       uint32_t id = rx_data.getId();
       if (id == ELCON_READ_ADDR)
       {
-        actual_current = ((double) ((rx_data.data[0] << 8) 
+        actual_voltage = ((double) ((rx_data.data[0] << 8)
                          | (rx_data.data[1]))) / 10;
-        actual_voltage = ((double) ((rx_data.data[2] << 8) 
+        actual_current = ((double) ((rx_data.data[2] << 8)
                          | (rx_data.data[3]))) / 10;
         if (!gui_items.terminate)
         {
@@ -172,11 +172,11 @@ void elconsChargeTheCarYo()
         target_voltage = gui_items.target_voltage->value() * 10;
       }
 
-      to_send[0] = request_current >> 8;
-      to_send[1] = request_current;
-      to_send[2] = target_voltage >> 8;
-      to_send[3] = target_voltage;
-      to_send[4] = 1;
+      to_send[0] = target_voltage >> 8;
+      to_send[1] = target_voltage;
+      to_send[2] = request_current >> 8;
+      to_send[3] = request_current;
+      to_send[4] = 0;
 
       if (can_if)
       {
@@ -189,7 +189,7 @@ void elconsChargeTheCarYo()
       to_send[1] = 0;
       to_send[2] = 0;
       to_send[3] = 0;
-      to_send[4] = 0;
+      to_send[4] = 1;
       if (can_if)
       {
         can_if->writeCanData(ELCON_WRITE_ADDR, 5, to_send);
